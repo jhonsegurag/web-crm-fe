@@ -3,6 +3,7 @@ export interface Order {
   code: string;
   contactId?: string;
   tableId?: string;
+  notes?: string;
   status: 'draft' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled' | 'refunded';
   channel: 'in_store' | 'online' | 'phone' | 'app';
   subtotal: number;
@@ -21,4 +22,11 @@ export interface OrderItem {
   price: number;
   quantity: number;
   subtotal: number;
+  notes?: string;
+}
+
+export interface AddItemRequest {
+  productId: string;
+  quantity: number;
+  notes?: string;
 }

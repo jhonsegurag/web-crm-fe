@@ -11,6 +11,7 @@ export interface Deal {
   id: string;
   stageId: string;
   contactId?: string;
+  orderId?: string;
   title: string;
   value: number;
   currency: string;

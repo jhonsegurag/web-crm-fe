@@ -17,6 +17,6 @@ export class PipelineService {
   }
   createDeal(dto: Partial<Deal>) { return this.http.post<ApiResponse<Deal>>('/pipeline/deals', dto); }
   updateDeal(id: string, dto: Partial<Deal>) { return this.http.put<ApiResponse<Deal>>(`/pipeline/deals/${id}`, dto); }
-  moveDeal(id: string, stageId: string, position: number) { return this.http.patch<ApiResponse<Deal>>(`/pipeline/deals/${id}/move`, { stageId, position }); }
+  moveDeal(id: string, stageId: string, position: number) { return this.http.post<ApiResponse<Deal>>(`/pipeline/deals/${id}/move`, { stageId, position }); }
   deleteDeal(id: string) { return this.http.delete<ApiResponse<null>>(`/pipeline/deals/${id}`); }
 }

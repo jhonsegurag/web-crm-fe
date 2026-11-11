@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PipelineService } from './pipeline.service';
+import { OrderPanelComponent } from './order-panel.component';
 import { PipelineStage, Deal } from '../../shared/types';
 
 const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899','#6366F1'];
@@ -9,7 +10,7 @@ const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899
 @Component({
   selector: 'app-pipeline-board',
   standalone: true,
-  imports: [DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule, OrderPanelComponent],
   template: `
     <div class="shell">
 
@@ -115,10 +116,26 @@ const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899
                       </span>
                     </div>
 
+                    @if (deal.orderId) {
+                      <button class="order-slot-btn"
+                        (click)="openOrderPanel(deal); $event.stopPropagation()"
+                        [class.order-slot-btn--active]="activeOrderPanel()?.dealId === deal.id"
+                        [attr.aria-expanded]="activeOrderPanel()?.dealId === deal.id"
+                        [attr.aria-label]="'View order for ' + deal.title"
+                        style="touch-action:manipulation">
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                          <rect x="1" y="2.5" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+                          <path d="M4 2.5V2a2 2 0 0 1 4 0v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                          <path d="M3.5 6.5h6M3.5 8.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                        </svg>
+                        Order
+                      </button>
+                    }
+
                     <!-- Move buttons (WCAG 2.2 AA drag alternative) -->
                     <div class="deal-actions">
                       <button class="move-btn" (click)="moveDealLeft(deal)"
-                        [disabled]="!prevStage(deal.stageId)"
+                        [disabled]="!prevStage(deal.stageId) || movingDealId() === deal.id"
                         [attr.aria-label]="'Move ' + deal.title + ' to previous stage'"
                         style="touch-action:manipulation">
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -133,7 +150,7 @@ const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899
                         <span class="move-label move-label--right">{{ nextStage(deal.stageId)!.name }}</span>
                       }
                       <button class="move-btn" (click)="moveDealRight(deal)"
-                        [disabled]="!nextStage(deal.stageId)"
+                        [disabled]="!nextStage(deal.stageId) || movingDealId() === deal.id"
                         [attr.aria-label]="'Move ' + deal.title + ' to next stage'"
                         style="touch-action:manipulation">
                         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -252,6 +269,14 @@ const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899
         }
 
       </div>
+
+      <!-- ── ORDER MODAL ───────────────────────── -->
+      @if (activeOrderPanel()) {
+        <app-order-panel
+          [orderId]="activeOrderPanel()!.orderId"
+          (closed)="closeOrderPanel()" />
+      }
+
     </div>
   `,
   styles: [`
@@ -571,6 +596,39 @@ const STAGE_COLORS = ['#8A76E8','#FF6B2C','#22A565','#3B82F6','#F59E0B','#EC4899
     .move-label--right { text-align: right; }
     .move-spacer { flex: 1; }
 
+    /* ── ORDER SLOT BUTTON ──────────────────── */
+    .order-slot-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      height: 26px;
+      margin-bottom: 6px;
+      padding: 0 8px;
+      background: rgba(138,118,232,0.06);
+      border: 1px solid rgba(138,118,232,0.2);
+      border-radius: 6px;
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--stream-ink);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .order-slot-btn:hover {
+      background: rgba(138,118,232,0.12);
+      border-color: rgba(138,118,232,0.4);
+    }
+    .order-slot-btn--active {
+      background: rgba(138,118,232,0.15);
+      border-color: var(--stream-ink);
+    }
+    .order-slot-btn:focus-visible {
+      outline: 2px solid var(--stream-ink);
+      outline-offset: 1px;
+      border-radius: 6px;
+    }
+
     /* ── ADD DEAL BUTTON ────────────────────── */
     .add-deal-btn {
       display: flex;
@@ -741,6 +799,12 @@ export class PipelineBoardComponent implements OnInit {
   showAddStage = signal(false);
   newStageName = signal('');
 
+  // Order panel state
+  activeOrderPanel = signal<{ dealId: string; orderId: string } | null>(null);
+
+  // Move deal in-flight state
+  movingDealId = signal<string | null>(null);
+
   sortedStages = computed(() => [...this.stages()].sort((a, b) => a.position - b.position));
   totalDeals   = computed(() => this.deals().length);
   totalValue   = computed(() => this.deals().reduce((sum, d) => sum + (d.value || 0), 0));
@@ -849,17 +913,42 @@ export class PipelineBoardComponent implements OnInit {
   // ── Move deal ──────────────────────────────
   moveDealLeft(deal: Deal) {
     const prev = this.prevStage(deal.stageId);
-    if (!prev) return;
+    if (!prev || this.movingDealId() === deal.id) return;
+    this.movingDealId.set(deal.id);
     this.svc.moveDeal(deal.id, prev.id, this.dealsForStage(prev.id).length).subscribe({
-      next: () => this.deals.update(ds => ds.map(d => d.id === deal.id ? { ...d, stageId: prev.id } : d)),
+      next: () => {
+        this.deals.update(ds => ds.map(d => d.id === deal.id ? { ...d, stageId: prev.id } : d));
+        this.movingDealId.set(null);
+      },
+      error: () => this.movingDealId.set(null),
     });
   }
 
   moveDealRight(deal: Deal) {
     const next = this.nextStage(deal.stageId);
-    if (!next) return;
+    if (!next || this.movingDealId() === deal.id) return;
+    this.movingDealId.set(deal.id);
     this.svc.moveDeal(deal.id, next.id, this.dealsForStage(next.id).length).subscribe({
-      next: () => this.deals.update(ds => ds.map(d => d.id === deal.id ? { ...d, stageId: next.id } : d)),
+      next: () => {
+        this.deals.update(ds => ds.map(d => d.id === deal.id ? { ...d, stageId: next.id } : d));
+        this.movingDealId.set(null);
+      },
+      error: () => this.movingDealId.set(null),
     });
+  }
+
+  // ── Order panel ────────────────────────────
+  openOrderPanel(deal: Deal) {
+    if (!deal.orderId) return;
+    const current = this.activeOrderPanel();
+    if (current?.dealId === deal.id) {
+      this.activeOrderPanel.set(null);
+    } else {
+      this.activeOrderPanel.set({ dealId: deal.id, orderId: deal.orderId });
+    }
+  }
+
+  closeOrderPanel() {
+    this.activeOrderPanel.set(null);
   }
 }
