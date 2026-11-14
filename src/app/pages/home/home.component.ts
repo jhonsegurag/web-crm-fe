@@ -29,6 +29,7 @@ interface Testimonial { quote: string; name: string; role: string; initials: str
         <div class="nav-links" [class.open]="menuOpen()" role="navigation" aria-label="Main navigation">
           <button (click)="scrollTo('features')">Features</button>
           <button (click)="scrollTo('testimonials')">Testimonials</button>
+          <button (click)="scrollTo('waitlist')">Waitlist</button>
           <button (click)="scrollTo('contact')">Contact</button>
           <a routerLink="/login" class="nav-login">Sign in</a>
           <a routerLink="/register" class="btn-cta-sm">Get started</a>
@@ -133,6 +134,51 @@ interface Testimonial { quote: string; name: string; role: string; initials: str
       </div>
     </section>
 
+    <!-- WAITLIST -->
+    <section id="waitlist" class="section waitlist-section" aria-labelledby="waitlist-heading">
+      <div class="container waitlist-inner">
+        <div class="section-header aos">
+          <h2 class="section-title" id="waitlist-heading">Get early access</h2>
+          <p class="section-sub">Join the waitlist and be the first to know when we open new spots.</p>
+        </div>
+        <form class="waitlist-form aos" style="transition-delay:0.1s"
+          (submit)="onWaitlistSubmit($event)" aria-label="Waitlist form" novalidate>
+          @if (waitlistSubmitted()) {
+            <div class="form-success" role="alert" aria-live="polite">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22A565" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              You're on the list! We'll reach out soon.
+            </div>
+          } @else {
+            <div class="waitlist-fields">
+              <div class="form-group">
+                <label for="wname">Name <span class="req" aria-hidden="true">*</span></label>
+                <input id="wname" type="text" placeholder="Your name" autocomplete="name"
+                  [value]="waitlistName()" (input)="waitlistName.set($any($event.target).value)"
+                  aria-required="true" required>
+              </div>
+              <div class="form-group">
+                <label for="wemail">Email <span class="req" aria-hidden="true">*</span></label>
+                <input id="wemail" type="email" placeholder="you@example.com" autocomplete="email"
+                  [value]="waitlistEmail()" (input)="waitlistEmail.set($any($event.target).value)"
+                  aria-required="true" required>
+              </div>
+              <div class="form-group">
+                <label for="wcompany">Company</label>
+                <input id="wcompany" type="text" placeholder="Your company (optional)" autocomplete="organization"
+                  [value]="waitlistCompany()" (input)="waitlistCompany.set($any($event.target).value)">
+              </div>
+            </div>
+            @if (waitlistError()) {
+              <div class="form-error" role="alert" aria-live="polite">{{ waitlistError() }}</div>
+            }
+            <button type="submit" class="btn-primary" [disabled]="waitlistLoading()">
+              {{ waitlistLoading() ? 'Joining…' : 'Join waitlist' }}
+            </button>
+          }
+        </form>
+      </div>
+    </section>
+
     <!-- CONTACT -->
     <section id="contact" class="section contact-section" aria-labelledby="contact-heading">
       <div class="container contact-inner">
@@ -216,6 +262,7 @@ interface Testimonial { quote: string; name: string; role: string; initials: str
           <nav class="footer-nav" aria-label="Footer navigation">
             <button (click)="scrollTo('features')">Features</button>
             <button (click)="scrollTo('testimonials')">Testimonials</button>
+            <button (click)="scrollTo('waitlist')">Waitlist</button>
             <button (click)="scrollTo('contact')">Contact</button>
             <a routerLink="/login">Sign in</a>
             <a routerLink="/register">Register</a>
@@ -815,12 +862,32 @@ interface Testimonial { quote: string; name: string; role: string; initials: str
       color: rgba(241,238,248,0.28);
     }
 
+    /* ── WAITLIST ────────────────────────── */
+    .waitlist-section { background: #fff; }
+    .waitlist-inner { display: flex; flex-direction: column; align-items: center; }
+    .waitlist-form { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+    .waitlist-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .waitlist-fields .form-group:last-child { grid-column: 1 / -1; }
+    .form-error {
+      font-size: 0.9rem;
+      color: #d94040;
+      background: rgba(217,64,64,0.07);
+      border: 1px solid rgba(217,64,64,0.2);
+      border-radius: 10px;
+      padding: 12px 16px;
+    }
+    button[disabled] { opacity: 0.6; cursor: not-allowed; }
+
     /* ── RESPONSIVE ──────────────────────── */
     @media (max-width: 960px) {
       .features-grid,
       .testimonials-grid { grid-template-columns: repeat(2, 1fr); }
       .contact-inner { grid-template-columns: 1fr; gap: 48px; }
       .stat-item { padding: 8px 24px; }
+    }
+    @media (max-width: 960px) {
+      .waitlist-fields { grid-template-columns: 1fr; }
+      .waitlist-fields .form-group:last-child { grid-column: auto; }
     }
     @media (max-width: 640px) {
       .nav-links {
@@ -863,6 +930,13 @@ export class HomeComponent implements AfterViewInit, OnDestroy {
   formEmail   = signal('');
   formMessage = signal('');
 
+  waitlistSubmitted = signal(false);
+  waitlistLoading   = signal(false);
+  waitlistError     = signal('');
+  waitlistName      = signal('');
+  waitlistEmail     = signal('');
+  waitlistCompany   = signal('');
+
   @HostListener('window:scroll')
   onScroll() { this.scrolled.set(window.scrollY > 40); }
 
@@ -874,6 +948,33 @@ export class HomeComponent implements AfterViewInit, OnDestroy {
   onSubmit(e: Event) {
     e.preventDefault();
     this.submitted.set(true);
+  }
+
+  async onWaitlistSubmit(e: Event) {
+    e.preventDefault();
+    this.waitlistError.set('');
+    this.waitlistLoading.set(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: this.waitlistEmail(),
+          name: this.waitlistName(),
+          company: this.waitlistCompany(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        this.waitlistError.set(data?.message ?? 'Something went wrong. Please try again.');
+      } else {
+        this.waitlistSubmitted.set(true);
+      }
+    } catch {
+      this.waitlistError.set('Could not reach the server. Please try again later.');
+    } finally {
+      this.waitlistLoading.set(false);
+    }
   }
 
   ngAfterViewInit() {
